@@ -1,40 +1,19 @@
 use log::info;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter};
 use web_sys::HtmlInputElement;
-use yew::{format::Json,services::storage::{StorageService, Area}, prelude::*};
-use yew_router::prelude::*;
-
-pub struct Root;
-
-impl Component for Root {
-    type Message = ();
-    type Properties = ();
-
-    fn create(_: Self::Properties, _: ComponentLink<Self>) -> Self {
-        Root
-    }
-    fn update(&mut self, _: Self::Message) -> ShouldRender {
-        true
-    }
-    fn change(&mut self, _: Self::Properties) -> ShouldRender {
-        true
-    }
-    fn view(&self) -> Html {
-        html! {
-            <Router<FragmentAdapter<AppRoute>>
-                render=Router::render(|r:FragmentAdapter<AppRoute>| html!{<App route=r.route />})
-                redirect=Router::redirect(|_|FragmentAdapter::<AppRoute>{path: "/".to_owned(), route: AppRoute::All}) />
-        }
-    }
-}
+use yew::{
+    format::Json,
+    prelude::*,
+    services::storage::{Area, StorageService},
+};
 
 pub struct App {
-    props: Props,
     link: ComponentLink<Self>,
     storage: Option<StorageService>,
     todos: Vec<Todo>,
+    filter: Filter,
     value: String,
     new_input: NodeRef,
     edit_input: NodeRef,
@@ -70,37 +49,34 @@ pub enum Msg {
     StartEdit(usize),
     UpdateItem(usize, String),
     CompleteEdit(usize),
+    Filter(Filter),
 }
 
-#[derive(Properties, Clone)]
-pub struct Props {
-    route: AppRoute,
-}
-
-#[derive(Switch, Debug, Clone)]
-#[to = "{*:path}#{*:route}"]
-struct FragmentAdapter<W: Switch> {
-    path: String,
-    route: W,
-}
-
-#[derive(Switch, Clone, Debug, PartialEq, Eq, EnumIter, Display)]
-pub enum AppRoute {
-    #[to = "/!"]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, EnumIter, Display)]
+pub enum Filter {
     All,
-    #[to = "/active"]
     Active,
-    #[to = "/completed"]
     Completed,
+}
+
+impl Filter {
+    fn accept(self, todo: &Todo) -> bool {
+        match (self, todo.completed) {
+            (Filter::All, _) => true,
+            (Filter::Active, false) => true,
+            (Filter::Completed, true) => true,
+            _ => false,
+        }
+    }
 }
 
 const STORAGE_KEY: &str = "todos";
 
 impl Component for App {
     type Message = Msg;
-    type Properties = Props;
+    type Properties = ();
 
-    fn create(props: Self::Properties, link: ComponentLink<Self>) -> Self {
+    fn create(_: Self::Properties, link: ComponentLink<Self>) -> Self {
         let storage = StorageService::new(Area::Local).ok();
         let todos = if let Some(storage) = storage.as_ref() {
             if let Json(Ok(todos)) = storage.restore(STORAGE_KEY) {
@@ -111,12 +87,11 @@ impl Component for App {
         } else {
             Vec::new()
         };
-        
         App {
-            props,
             link,
             storage,
             todos,
+            filter: Filter::All,
             value: String::new(),
             new_input: NodeRef::default(),
             edit_input: NodeRef::default(),
@@ -164,6 +139,10 @@ impl Component for App {
             Msg::CompleteEdit(index) => {
                 info!("Complete editing #{}.", index);
                 self.todos[index].editing = false;
+            },
+            Msg::Filter(f) => {
+                info!("Filter {}", f);
+                self.filter = f;
             }
         }
         if let Some(storage) = self.storage.as_mut() {
@@ -188,8 +167,7 @@ impl Component for App {
                 .unwrap();
         }
     }
-    fn change(&mut self, props: Self::Properties) -> ShouldRender {
-        self.props = props;
+    fn change(&mut self, _: Self::Properties) -> ShouldRender {
         true
     }
     fn view(&self) -> Html {
@@ -257,10 +235,7 @@ impl App {
 
     fn view_todo(&self, index: usize) -> Html {
         let todo = &self.todos[index];
-        if self.props.route == AppRoute::All
-            || self.props.route == AppRoute::Active && !todo.completed
-            || self.props.route == AppRoute::Completed && todo.completed
-        {
+        if self.filter.accept(todo) {
             html! {
                 <li class={if todo.editing{"editing"}else if todo.completed{"completed"} else {""}}>
                     <div class="view">
@@ -292,18 +267,18 @@ impl App {
 
     fn view_footer(&self) -> Html {
         let completed = self.todos.iter().filter(|t| t.completed).count();
-        let not_completed = self.todos.len() - completed;
+        let active = self.todos.len() - completed;
         html! {
             <footer class="footer">
-                <span class="todo-count"><strong>{not_completed}</strong>{" item(s) left"}</span>
+                <span class="todo-count"><strong>{active}</strong>{" item(s) left"}</span>
                 <ul class="filters">
-                {for AppRoute::iter().map(|r| html!{
+                {for Filter::iter().map(|f| html!{
                     <li>
-                        <RouterAnchor<FragmentAdapter<AppRoute>>
-                            route=FragmentAdapter::<AppRoute>{path: "/".to_owned(), route: r.clone()}
-                            classes=if self.props.route == r {"selected"} else {""} >
-                            {r.to_string()}
-                        </RouterAnchor<FragmentAdapter<AppRoute>>>
+                        <a
+                            class=if self.filter == f{"selected"}else{""} href="javascript:"
+                            onclick=self.link.callback(move |_|Msg::Filter(f))>
+                            {f}
+                        </a>
                     </li>
                 })}
                 </ul>
