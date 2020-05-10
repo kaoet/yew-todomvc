@@ -1,1 +1,5 @@
 node_modules
+/target
+/.cache
+/dist
+/pkg
