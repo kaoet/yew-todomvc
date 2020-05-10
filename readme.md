@@ -1,5 +1,8 @@
 # TodoMVC using Yew
 
+![GitHub](https://img.shields.io/github/license/kaoet/yew-todomvc)
+![GitHub Actions](https://github.com/kaoet/yew-todomvc/workflows/main/badge.svg)
+
 TodoMVC implementation using the [Yew](https://yew.rs) framework.
 
 # Build
